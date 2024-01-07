@@ -1,0 +1,20 @@
+CREATE TABLE ObjectDetectionResults (
+    Image_Name VARCHAR(255),
+    ymin FLOAT,
+    xmin FLOAT,
+    ymax FLOAT,
+    xmax FLOAT,
+    PRIMARY KEY (Image_Name)
+);
+CREATE TABLE AircraftDetectionResults (
+    Image_Name VARCHAR(255),
+    confidence FLOAT,
+    class_ VARCHAR(10),
+    PRIMARY KEY (Image_Name)
+);
+CREATE TABLE Users (
+    Username VARCHAR(255),
+    Password VARCHAR(255),
+    Role VARCHAR(10),
+    PRIMARY KEY (Username)
+);
