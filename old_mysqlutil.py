@@ -1,6 +1,5 @@
-import csv
-import random
 import mysql.connector
+import random
 
 # SQL 命令
 INSERT_OBJECT_DETECTION_QUERY = "INSERT INTO ObjectDetectionResults (Image_Name, ymin, xmin, ymax, xmax) VALUES (%s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE ymin=VALUES(ymin), xmin=VALUES(xmin), ymax=VALUES(ymax), xmax=VALUES(xmax)"
@@ -161,7 +160,6 @@ class DatabaseUtil:
 
     def add_user(self, username, password, role):
         try:
-            # 假设密码已经被适当加密
             query = "INSERT INTO Users (Username, Password, Role) VALUES (%s, %s, %s)"
             self.cursor.execute(query, (username, password, role))
             self.conn.commit()

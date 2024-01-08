@@ -4,12 +4,14 @@ CREATE TABLE ObjectDetectionResults (
     xmin FLOAT,
     ymax FLOAT,
     xmax FLOAT,
+    Username VARCHAR(255),
     PRIMARY KEY (Image_Name)
 );
 CREATE TABLE AircraftDetectionResults (
     Image_Name VARCHAR(255),
     confidence FLOAT,
     class_ VARCHAR(10),
+    Username VARCHAR(255),
     PRIMARY KEY (Image_Name)
 );
 CREATE TABLE Users (

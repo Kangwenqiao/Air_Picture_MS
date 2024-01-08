@@ -1,8 +1,9 @@
 # 导入 SQLAlchemy 中所需的模块和类
-from sqlalchemy import create_engine, Column, String, Float, func
+import csv
+import random
+from sqlalchemy import create_engine, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-import random
 
 # 从 'models' 模块导入模型定义（假设其中包含 ObjectDetectionResult、User 和 AircraftDetectionResult 的定义）
 from models import ObjectDetectionResult, User, AircraftDetectionResult
@@ -133,6 +134,29 @@ class DatabaseUtil:
             print("用户已成功添加")
         except Exception as e:
             print(f"添加用户时出错: {e}")
+
+    def export_to_csv(self, username, file_path):
+        try:
+            results = self.session.query(
+                ObjectDetectionResult.Image_Name, ObjectDetectionResult.ymin,
+                ObjectDetectionResult.xmin, ObjectDetectionResult.ymax,
+                ObjectDetectionResult.xmax, AircraftDetectionResult.class_
+            ).join(
+                AircraftDetectionResult,
+                ObjectDetectionResult.Image_Name == AircraftDetectionResult.Image_Name
+            ).filter(
+                ObjectDetectionResult.Username == username
+            ).all()
+
+            with open(file_path, mode='w', newline='', encoding='utf-8') as file:
+                writer = csv.writer(file)
+                writer.writerow(['Image_Name', 'ymin', 'xmin', 'ymax', 'xmax', 'class_'])
+                for row in results:
+                    writer.writerow(row)
+
+            print("数据成功导出到", file_path)
+        except Exception as e:
+            print(f"导出数据到CSV时出错: {e}")
 
     # 关闭数据库连接
     def close_connection(self):

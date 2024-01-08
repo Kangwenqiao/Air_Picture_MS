@@ -1,0 +1,562 @@
+# 导入 SQLAlchemy 中所需的模块和类
+import random
+from sqlalchemy import create_engine, func
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
+# 从 'models' 模块导入模型定义（假设其中包含 ObjectDetectionResult、User 和 AircraftDetectionResult 的定义）
+from models import ObjectDetectionResult, User, AircraftDetectionResult
+
+# 创建声明性类定义的基类
+Base = declarative_base()
+
+# DatabaseUtil 类用于数据库操作
+class DatabaseUtil:
+    def __init__(self):
+        # 数据库配置
+        self.engine = create_engine('mysql+mysqlconnector://root:2003Kangwenqiao@localhost/database_base')
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine)
+        self.session = self.Session()
+
+    # 插入或更新 ObjectDetectionResults 表
+    def insert_or_update_object_detection(self, detection_data, username):
+        try:
+            detection_data['Username'] = username
+            self.session.merge(ObjectDetectionResult(**detection_data))
+            self.session.commit()
+        except Exception as e:
+            print(f"插入或更新 ObjectDetectionResults 时出错: {e}")
+
+    # 插入或更新 AircraftDetectionResults 表
+    def insert_or_update_aircraft_detection(self, aircraft_data, username):
+        try:
+            aircraft_data['Username'] = username
+            self.session.merge(AircraftDetectionResult(**aircraft_data))
+            self.session.commit()
+        except Exception as e:
+            print(f"插入或更新 AircraftDetectionResults 时出错: {e}")
+
+    # 打印不同飞机类型的数量
+    def print_aircraft_types_counts(self):
+        try:
+            results = self.session.query(AircraftDetectionResult.class_, func.count('*').label('count')).group_by(
+                AircraftDetectionResult.class_).all()
+            return '\n'.join([f"Aircraft Type: {result.class_}, Count: {result.count}" for result in results])
+        except Exception as e:
+            print(f"获取飞机类型数量时出错：{e}")
+            return ""
+
+    # 清除指定飞机类型的数据
+    def clear_aircraft_data_by_type(self, aircraft_type):
+        try:
+            # 从 AircraftDetectionResults 表中获取图片名称
+            aircraft_images = [result.Image_Name for result in self.session.query(AircraftDetectionResult).filter_by(
+                class_=aircraft_type).all()]
+
+            # 从 ObjectDetectionResults 表中删除相应的行
+            for image_name in aircraft_images:
+                self.session.query(ObjectDetectionResult).filter_by(Image_Name=image_name).delete()
+
+            # 从 AircraftDetectionResults 表中删除相应的行
+            self.session.query(AircraftDetectionResult).filter_by(class_=aircraft_type).delete()
+
+            self.session.commit()
+            print(f"已清除飞机类型为 {aircraft_type} 的数据。")
+
+        except Exception as e:
+            print(f"清除飞机类型数据时出错：{e}")
+
+    # 清空数据库表
+    def clear_database(self):
+        try:
+            self.session.query(ObjectDetectionResult).delete()
+            self.session.query(AircraftDetectionResult).delete()
+            self.session.commit()
+        except Exception as e:
+            print(f"清空数据库时出错: {e}")
+
+    # 根据图片名称查询飞机类型
+    def query_by_image_name(self, image_name):
+        try:
+            results = self.session.query(AircraftDetectionResult.class_).filter_by(Image_Name=image_name).all()
+            aircraft_types = [result.class_ for result in results]
+            return ', '.join(aircraft_types) if aircraft_types else "未检测到飞机。"
+        except Exception as e:
+            print(f"根据图片名称查询时出错: {e}")
+            return ""
+
+
+    # 获取指定飞机类型的随机图片信息
+    def get_random_image_by_aircraft_type(self, aircraft_type):
+        try:
+            results = self.session.query(ObjectDetectionResult.Image_Name, ObjectDetectionResult.ymin,
+                                         ObjectDetectionResult.xmin, ObjectDetectionResult.ymax,
+                                         ObjectDetectionResult.xmax, AircraftDetectionResult.class_,
+                                         AircraftDetectionResult.confidence).join(
+                AircraftDetectionResult, ObjectDetectionResult.Image_Name == AircraftDetectionResult.Image_Name).filter(
+                AircraftDetectionResult.class_ == aircraft_type).all()
+
+            return random.choice(results) if results else None
+        except Exception as e:
+            print(f"查询飞机类型图片时出错: {e}")
+            return None
+
+    # 更新检测结果
+    def update_detection_results(self, image_name, ymin, xmin, ymax, xmax, confidence, aircraft_class):
+        try:
+            self.session.query(ObjectDetectionResult).filter_by(Image_Name=image_name).update(
+                {'ymin': ymin, 'xmin': xmin, 'ymax': ymax, 'xmax': xmax})
+
+            self.session.query(AircraftDetectionResult).filter_by(Image_Name=image_name).update(
+                {'confidence': confidence, 'class_': aircraft_class})
+
+            self.session.commit()
+        except Exception as e:
+            print(f"更新检测结果时出错: {e}")
+
+    # 检查用户凭据
+    def check_user_credentials(self, username, password):
+        try:
+            result = self.session.query(User).filter_by(Username=username, Password=password).first()
+            return {'Username': result.Username, 'Role': result.Role} if result else None
+        except Exception as e:
+            print(f"登录时出错: {e}")
+            return None
+
+    # 添加用户
+    def add_user(self, username, password, role):
+        try:
+            new_user = User(Username=username, Password=password, Role=role)
+            self.session.add(new_user)
+            self.session.commit()
+            print("用户已成功添加")
+        except Exception as e:
+            print(f"添加用户时出错: {e}")
+
+    # 关闭数据库连接
+    def close_connection(self):
+        try:
+            self.session.close()
+        except Exception as e:
+            print(f"关闭连接时出错: {e}")
+# ... 继续
+# GUI.py
+import os
+import re
+import tkinter as tk
+from PIL import Image, ImageDraw, ImageFont
+from PIL import ImageTk
+from tkinter import filedialog, messagebox, simpledialog, ttk
+
+from databaseutil import DatabaseUtil
+from model_predict import Predict
+
+
+class ObjectDetectionGUI:
+    IMAGE_DIRECTORY = "datasets/train/images"  # 设置您的图片目录
+
+    def __init__(self, root, background_image_path):
+        self.root = root
+        root.title("对象检测")
+        root.geometry("800x600")  # 可以根据需要调整窗口大小
+        self.background_image_path = background_image_path
+        self.background_image = None
+        self.background_photo = None
+        self.canvas = tk.Canvas(root, bg='black')
+        self.canvas.pack(fill="both", expand=True)
+
+        self.database_util = DatabaseUtil()
+        self.predictor = Predict(database_util=self.database_util)
+
+        self.user_role = None  # 新增：用户角色，默认为空
+        self.user = None  # 初始化 user 属性
+        self.show_login_window()  # 先显示登录窗口
+
+    def show_login_window(self):
+        # 显示登录窗口
+        login_window = tk.Toplevel(self.root)
+        login_window.title("登录")
+        login_window.geometry("300x200")
+        tk.Label(login_window, text="用户名:").pack(pady=5)
+        username_entry = tk.Entry(login_window)
+        username_entry.pack(pady=5)
+        tk.Label(login_window, text="密码:").pack(pady=5)
+        password_entry = tk.Entry(login_window, show="*")
+        password_entry.pack(pady=5)
+        ttk.Button(login_window, text="登录", command=lambda: self.login(username_entry.get(), password_entry.get())).pack(pady=10)
+
+    def login(self, username, password):
+        # 用户登录验证
+        user = self.database_util.check_user_credentials(username, password)
+        if user:
+            self.user = user  # 设置 user 属性
+            self.user_role = user['Role']
+            self.setup_ui()
+            self.update_background()
+        else:
+            messagebox.showerror("错误", "用户名或密码错误")
+
+    def setup_ui(self):
+        if not self.user_role:  # 检查用户角色
+            return
+
+        self.canvas.bind('<Configure>', self.resize_background)
+
+        frame = tk.Frame(self.canvas, bg='#000000', bd=2, relief='groove')
+        frame.place(relx=0.5, rely=0.5, anchor='center')
+        frame.config(bg="white", highlightbackground="gray", highlightcolor="gray", highlightthickness=1, bd=0)
+        # 管理员专有功能
+        if self.user_role == 'Admin':
+            ttk.Button(frame, text="调节透明度", command=self.adjust_opacity).pack(padx=10, pady=5)
+            ttk.Button(frame, text="清除指定飞机类型数据", command=self.clear_aircraft_data).pack(padx=10, pady=5)
+            ttk.Button(frame, text="修改检测结果", command=self.modify_detection_results).pack(padx=10, pady=5)
+            ttk.Button(frame, text="清空数据库", command=self.clear_database).pack(padx=10, pady=5)
+            ttk.Button(frame, text="添加用户", command=self.create_add_user_window).pack(padx=10, pady=5)
+            ttk.Button(frame, text="显示飞机类型数量", command=self.show_aircraft_counts).pack(padx=10, pady=5)
+        else:
+            ttk.Button(frame, text="调节透明度", command=self.adjust_opacity).pack(padx=10, pady=5)
+            ttk.Button(frame, text="选择图片", command=self.select_file).pack(padx=10, pady=5)
+            ttk.Button(frame, text="选择文件夹", command=self.select_folder).pack(padx=10, pady=5)
+            ttk.Button(frame, text="显示飞机类型数量", command=self.show_aircraft_counts).pack(padx=10, pady=5)
+            ttk.Button(frame, text="根据图片名称查询", command=self.query_by_image_name).pack(padx=10, pady=5)
+            ttk.Button(frame, text="显示指定类型飞机图片", command=self.display_aircraft_image).pack(padx=10, pady=5)
+
+        self.status_label = tk.Label(frame, text="", fg="white", bg='black')
+        self.status_label.pack(padx=10, pady=5)
+
+    def update_background(self):
+        # 更新背景图像
+        self.background_image = Image.open(self.background_image_path)
+        self.background_photo = ImageTk.PhotoImage(self.background_image)
+        self.canvas.create_image(0, 0, image=self.background_photo, anchor='nw')
+
+    def resize_background(self, event):
+        # 调整窗口大小时重置背景大小
+        new_width = event.width
+        new_height = event.height
+        self.background_image = self.background_image.resize((new_width, new_height), Image.ANTIALIAS)
+        self.background_photo = ImageTk.PhotoImage(self.background_image)
+        self.canvas.create_image(0, 0, image=self.background_photo, anchor='nw')
+
+    def select_file(self):
+        # 选择单个文件
+        file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.jpg *.jpeg *.png")])
+        if file_path:
+            self.status_label.config(text=f"已选择文件: {file_path}")
+
+            current_username = self.user['Username']
+            self.predictor.detect_and_save(file_path, current_username)  # 传递 username
+
+            messagebox.showinfo("完成", "检测完成，并已将结果保存到数据库。")
+
+    def select_folder(self):
+        # 选择文件夹
+        folder_path = filedialog.askdirectory()
+        if folder_path and self.user:  # 检查用户是否已登录
+            self.status_label.config(text=f"已选择文件夹: {folder_path}")
+
+            current_username = self.user['Username']
+            self.predictor.batch_detect_and_save(folder_path, current_username)  # 传递 username
+
+            messagebox.showinfo("完成", "检测完成，并已将结果保存到数据库。")
+        elif not self.user:
+            messagebox.showerror("错误", "未登录用户")
+
+    def show_aircraft_counts(self):
+        # 显示飞机类型数量
+        counts = self.database_util.print_aircraft_types_counts()
+        messagebox.showinfo("飞机类型数量", counts)
+
+    def clear_aircraft_data(self):
+        # 清除指定飞机类型数据
+        aircraft_type = simpledialog.askstring("输入", "请输入要清除的飞机类型:")
+        if aircraft_type:
+            self.database_util.clear_aircraft_data_by_type(aircraft_type)
+            messagebox.showinfo("操作完成", "数据已清除。")
+
+    def clear_database(self):
+        # 清空数据库
+        self.database_util.clear_database()
+        messagebox.showinfo("操作完成", "数据库已清空。")
+
+    def query_by_image_name(self):
+        # 根据图片名称查询
+        image_name = simpledialog.askstring("输入", "请输入图片名称:")
+        if image_name:
+            aircraft_types = self.database_util.query_by_image_name(image_name)
+            messagebox.showinfo("查询结果", f"图片 {image_name} 中检测到的飞机类型: {aircraft_types}")
+
+    def display_aircraft_image(self):
+        # 显示指定类型飞机图片
+        aircraft_type = simpledialog.askstring("输入", "请输入飞机类型:")
+        if aircraft_type:
+            result = self.database_util.get_random_image_by_aircraft_type(aircraft_type)
+            if result:
+                image_name, ymin, xmin, ymax, xmax, class_name, confidence = result
+                self.show_image_with_box(image_name, ymin, xmin, ymax, xmax, class_name, confidence)
+            else:
+                messagebox.showinfo("信息", "未找到该类型的飞机图片。")
+
+    def show_image_with_box(self, image_name, ymin, xmin, ymax, xmax, class_name, confidence):
+        # 在图像上显示检测结果
+        image_path = os.path.join(self.IMAGE_DIRECTORY, image_name)
+
+        # 删除括号及其内容
+        image_path = re.sub(r"\([^)]*\)", "", image_path)
+
+        image = Image.open(image_path)
+        draw = ImageDraw.Draw(image)
+
+        # 绘制边界框
+        draw.rectangle([(xmin, ymin), (xmax, ymax)], outline="red", width=2)
+
+        # 添加识别参数标签
+        label = f"{class_name} ({confidence:.2f})"
+
+        # 设置字体大小和类型
+        font_size = 16  # 字体大小
+        font = ImageFont.truetype("arial.ttf", font_size)
+
+        text_size = draw.textsize(label, font=font)
+        draw.rectangle([(xmin, ymin - text_size[1]), (xmin + text_size[0], ymin)], fill="red")
+        draw.text((xmin, ymin - text_size[1]), label, fill="white", font=font)
+
+        image.show()
+
+    def adjust_opacity(self):
+        # 调整透明度窗口
+        opacity_window = tk.Toplevel(self.root)
+        opacity_window.title("调整透明度")
+        opacity_window.geometry("300x100")
+
+        tk.Label(opacity_window, text="调整透明度:").pack(pady=5)
+
+        opacity_scale = tk.Scale(opacity_window, from_=0.1, to=1.0, resolution=0.1, orient=tk.HORIZONTAL,
+                                 command=self.set_opacity)
+        opacity_scale.set(self.root.attributes('-alpha'))  # 设置当前透明度为滑块的初始值
+        opacity_scale.pack(pady=5)
+
+    def set_opacity(self, value):
+        # 设置透明度
+        self.root.attributes('-alpha', float(value))
+
+    def create_add_user_window(self):
+        # 创建添加用户窗口
+        add_user_window = tk.Toplevel(self.root)
+        add_user_window.title("添加用户")
+        add_user_window.geometry("300x250")  # 增加窗口高度以容纳新按钮
+
+        tk.Label(add_user_window, text="用户名:").pack(pady=5)
+        username_entry = tk.Entry(add_user_window)
+        username_entry.pack(pady=5)
+
+        tk.Label(add_user_window, text="密码:").pack(pady=5)
+        password_entry = tk.Entry(add_user_window, show="*")
+        password_entry.pack(pady=5)
+
+        tk.Label(add_user_window, text="角色:").pack(pady=5)
+        role_var = tk.StringVar(value="User")
+        role_option = ttk.OptionMenu(add_user_window, role_var, "User", "Admin", "User")
+        role_option.pack(pady=5)
+
+        add_button = ttk.Button(add_user_window, text="添加用户", command=lambda: self.add_user(username_entry.get(), password_entry.get(), role_var.get()))
+        add_button.pack(pady=10)
+
+        # 添加一个确定按钮来关闭窗口
+        confirm_button = ttk.Button(add_user_window, text="确定", command=add_user_window.destroy)
+        confirm_button.pack(pady=10)
+
+    def add_user(self, username, password, role):
+        # 添加用户
+        # 此处应包含密码加密逻辑
+        self.database_util.add_user(username, password, role)
+        messagebox.showinfo("完成", "用户添加成功")
+        # 可以在这里添加逻辑以关闭添加用户窗口，如果需要
+
+    def modify_detection_results(self):
+        # 修改检测结果
+        image_name = simpledialog.askstring("输入", "请输入要修改的图片名称:")
+        if image_name:
+            # 以下值应根据实际情况进行修改
+            new_ymin = simpledialog.askfloat("输入", "请输入新的 ymin:")
+            new_xmin = simpledialog.askfloat("输入", "请输入新的 xmin:")
+            new_ymax = simpledialog.askfloat("输入", "请输入新的 ymax:")
+            new_xmax = simpledialog.askfloat("输入", "请输入新的 xmax:")
+            new_confidence = simpledialog.askfloat("输入", "请输入新的置信度:")
+            new_class = simpledialog.askstring("输入", "请输入新的飞机类型:")
+
+            self.database_util.update_detection_results(image_name, new_ymin, new_xmin, new_ymax, new_xmax,
+                                                        new_confidence, new_class)
+            messagebox.showinfo("信息", "检测结果已更新.")
+
+# 创建根窗口并运行应用程序
+root = tk.Tk()
+app = ObjectDetectionGUI(root, "background.jpg")
+root.mainloop()
+#main.py
+import tkinter as tk
+
+from GUI import ObjectDetectionGUI
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ObjectDetectionGUI(root, 'background.jpg')
+    root.mainloop()
+# model_predict.py
+import os
+import torch
+from glob import glob
+from ultralytics import YOLO
+
+
+class Predict:
+    def __init__(self, model_path='YOLOv8_v8n_2023.11.13.pt', database_util=None, use_gpu=True):
+        """
+        初始化预测模块
+
+        Args:
+            model_path (str): YOLO模型的路径
+            database_util (DatabaseUtil): 数据库工具实例
+            use_gpu (bool): 是否使用GPU
+        """
+        self.use_gpu = use_gpu
+        self.database_util = database_util
+
+        if use_gpu and torch.cuda.is_available():
+            self.device = torch.device('cuda')
+            print("使用GPU.")
+        else:
+            self.device = torch.device('cpu')
+            print("使用CPU.")
+
+        self.model = YOLO(model_path).to(self.device)
+        self.class_mapping = {0: 'E2', 1: 'J20', 2: 'B2', 3: 'F14', 4: 'Tornado', 5: 'F4', 6: 'B52', 7: 'JAS39', 8: 'Mirage2000'}
+
+    def detect_and_save(self, image_path, username):
+        """
+        检测图像并保存结果到数据库
+
+        Args:
+            image_path (str): 输入图像路径
+            username (str): 当前操作用户的用户名
+        """
+        image_name, extension = os.path.splitext(os.path.basename(image_path))
+
+        # 检测对象
+        boxes = self.detect_image(image_path)
+
+        # 遍历检测到的每个物体
+        for i, box in enumerate(boxes):
+            ymin, xmin, ymax, xmax, confidence, class_pred = box
+
+            # 如果有多个物体被检测到，给图片名添加后缀
+            suffix = f"({i + 1})" if len(boxes) > 1 else ""
+            image_name_with_suffix = f"{image_name}{suffix}{extension}"
+
+            # 准备 ObjectDetectionResult 数据
+            object_detection_data = {
+                'Image_Name': image_name_with_suffix,
+                'ymin': float(ymin),
+                'xmin': float(xmin),
+                'ymax': float(ymax),
+                'xmax': float(xmax),
+                'Username': username  # 添加 username
+            }
+
+            # 插入或更新 ObjectDetectionResults 表
+            self.database_util.insert_or_update_object_detection(object_detection_data, username)
+
+            # 准备 AircraftDetectionResult 数据
+            aircraft_detection_data = {
+                'Image_Name': image_name_with_suffix,
+                'confidence': float(confidence),
+                'class_': str(self.class_mapping[int(class_pred)]),
+                'Username': username  # 添加 username
+            }
+
+            # 插入或更新 AircraftDetectionResults 表
+            self.database_util.insert_or_update_aircraft_detection(aircraft_detection_data, username)
+
+    def detect_image(self, image_path):
+        """
+        检测单张图像
+
+        Args:
+            image_path (str): 输入图像路径
+
+        Returns:
+            torch.Tensor: 检测框的信息
+        """
+        out = self.model.predict(image_path)
+        boxes = out[0].boxes.data.cpu().numpy()
+        boxes = boxes[:, [1, 0, 3, 2, 4, 5]]  # 重新排序为ymin, xmin, ymax, xmax, conf, class_pred
+        return boxes
+
+    def batch_detect_and_save(self, image_folder, username):
+        image_paths = glob(os.path.join(image_folder, '*.jpg'))
+
+        for image_path in image_paths:
+            try:
+                self.detect_and_save(image_path, username)  # 确保传递 username
+            except Exception as e:
+                print(f"处理图像 {image_path} 时出错: {e}")
+
+# models.py
+from sqlalchemy import create_engine, Column, String, Float
+from sqlalchemy.ext.declarative import declarative_base
+
+Base = declarative_base()
+
+class ObjectDetectionResult(Base):
+    __tablename__ = 'ObjectDetectionResults'
+
+    Image_Name = Column(String(255), primary_key=True)  # 图像名称，主键
+    ymin = Column(Float)  # 检测结果的最小 Y 坐标
+    xmin = Column(Float)  # 检测结果的最小 X 坐标
+    ymax = Column(Float)  # 检测结果的最大 Y 坐标
+    xmax = Column(Float)  # 检测结果的最大 X 坐标
+    Username = Column(String(255))  # 与检测结果关联的用户名
+
+class AircraftDetectionResult(Base):
+    __tablename__ = 'AircraftDetectionResults'
+
+    Image_Name = Column(String(255), primary_key=True)  # 图像名称，主键
+    confidence = Column(Float)  # 飞机检测的置信度
+    class_ = Column(String(10))  # 检测到的飞机的类别
+    Username = Column(String(255))  # 与飞机检测结果关联的用户名
+
+class User(Base):
+    __tablename__ = 'Users'
+
+    Username = Column(String(255), primary_key=True)  # 用户名，主键
+    Password = Column(String(255))  # 用户密码
+    Role = Column(String(10))  # 用户角色（例如，管理员、普通用户）
+
+# 创建数据库引擎
+engine = create_engine('mysql+mysqlconnector://root:2003Kangwenqiao@localhost/database_base')
+
+# 创建模型对应的表
+Base.metadata.create_all(engine)
+CREATE TABLE ObjectDetectionResults (
+    Image_Name VARCHAR(255),
+    ymin FLOAT,
+    xmin FLOAT,
+    ymax FLOAT,
+    xmax FLOAT,
+    Username VARCHAR(255),
+    PRIMARY KEY (Image_Name)
+);
+CREATE TABLE AircraftDetectionResults (
+    Image_Name VARCHAR(255),
+    confidence FLOAT,
+    class_ VARCHAR(10),
+    Username VARCHAR(255),
+    PRIMARY KEY (Image_Name)
+);
+CREATE TABLE Users (
+    Username VARCHAR(255),
+    Password VARCHAR(255),
+    Role VARCHAR(10),
+    PRIMARY KEY (Username)
+);

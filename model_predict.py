@@ -1,8 +1,9 @@
 # model_predict.py
 import os
-from glob import glob
 import torch
+from glob import glob
 from ultralytics import YOLO
+
 
 class Predict:
     def __init__(self, model_path='YOLOv8_v8n_2023.11.13.pt', database_util=None, use_gpu=True):

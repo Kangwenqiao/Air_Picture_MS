@@ -2,10 +2,9 @@
 import os
 import re
 import tkinter as tk
-from tkinter import filedialog, messagebox, simpledialog, ttk
-
 from PIL import Image, ImageDraw, ImageFont
 from PIL import ImageTk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from databaseutil import DatabaseUtil
 from model_predict import Predict
@@ -71,12 +70,15 @@ class ObjectDetectionGUI:
             ttk.Button(frame, text="修改检测结果", command=self.modify_detection_results).pack(padx=10, pady=5)
             ttk.Button(frame, text="清空数据库", command=self.clear_database).pack(padx=10, pady=5)
             ttk.Button(frame, text="添加用户", command=self.create_add_user_window).pack(padx=10, pady=5)
+            ttk.Button(frame, text="导出数据到CSV", command=self.export_data_to_csv).pack(padx=10, pady=5)
+            ttk.Button(frame, text="显示飞机类型数量", command=self.show_aircraft_counts).pack(padx=10, pady=5)
         else:
             ttk.Button(frame, text="调节透明度", command=self.adjust_opacity).pack(padx=10, pady=5)
             ttk.Button(frame, text="选择图片", command=self.select_file).pack(padx=10, pady=5)
             ttk.Button(frame, text="选择文件夹", command=self.select_folder).pack(padx=10, pady=5)
             ttk.Button(frame, text="显示飞机类型数量", command=self.show_aircraft_counts).pack(padx=10, pady=5)
             ttk.Button(frame, text="根据图片名称查询", command=self.query_by_image_name).pack(padx=10, pady=5)
+            ttk.Button(frame, text="导出数据到CSV", command=self.export_data_to_csv).pack(padx=10, pady=5)
             ttk.Button(frame, text="显示指定类型飞机图片", command=self.display_aircraft_image).pack(padx=10, pady=5)
 
         self.status_label = tk.Label(frame, text="", fg="white", bg='black')
@@ -247,7 +249,19 @@ class ObjectDetectionGUI:
                                                         new_confidence, new_class)
             messagebox.showinfo("信息", "检测结果已更新.")
 
+    def export_data_to_csv(self):
+        # 请求输入要导出其数据的用户名
+        username = simpledialog.askstring("导出数据", "输入用户名:")
+        if username:
+            # 请求输入保存CSV的文件路径
+            file_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV文件", "*.csv")])
+            if file_path:
+                self.database_util.export_to_csv(username, file_path)
+                messagebox.showinfo("导出成功", f"数据成功导出到 {file_path}")
+            else:
+                messagebox.showwarning("导出取消", "导出操作已取消。")
+
 # 创建根窗口并运行应用程序
 root = tk.Tk()
-app = ObjectDetectionGUI(root, "path/to/background/image.jpg")
+app = ObjectDetectionGUI(root, "background.jpg")
 root.mainloop()
