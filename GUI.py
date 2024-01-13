@@ -261,7 +261,3 @@ class ObjectDetectionGUI:
             else:
                 messagebox.showwarning("导出取消", "导出操作已取消。")
 
-# 创建根窗口并运行应用程序
-root = tk.Tk()
-app = ObjectDetectionGUI(root, "background.jpg")
-root.mainloop()
