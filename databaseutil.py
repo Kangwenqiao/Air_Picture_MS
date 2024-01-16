@@ -14,10 +14,16 @@ Base = declarative_base()
 # DatabaseUtil 类用于数据库操作
 class DatabaseUtil:
     def __init__(self):
-        # 数据库配置
+        # 设置数据库引擎，连接到 MySQL 数据库
         self.engine = create_engine('mysql+mysqlconnector://root:2003Kangwenqiao@localhost/database_base')
+
+        # 使用 Base.metadata.create_all(self.engine) 创建定义在 Base 中的表
         Base.metadata.create_all(self.engine)
+
+        # 创建与数据库引擎绑定的 sessionmaker，用于生成数据库会话
         self.Session = sessionmaker(bind=self.engine)
+
+        # 利用 sessionmaker 创建新的数据库会话
         self.session = self.Session()
 
     # 插入或更新 ObjectDetectionResults 表
